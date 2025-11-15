@@ -176,7 +176,7 @@ wait_for_pr_checks() {
             return 1
         fi
 
-        local review_decision=$(echo "$pr_info" | jq -r '.reviewDecision // "null"')
+        local review_decision=$(echo "$pr_info" | jq -r 'if .reviewDecision == "" then "null" else (.reviewDecision // "null") end')
         local review_requests_count=$(echo "$pr_info" | jq '.reviewRequests | length' 2>/dev/null || echo "0")
         
         local reviews_pending=false
@@ -184,12 +184,12 @@ wait_for_pr_checks() {
             reviews_pending=true
         fi
         
-        if [ "$review_decision" != "null" ]; then
+        if [ -n "$review_decision" ] && [ "$review_decision" != "null" ]; then
             echo "   👁️  Review status: $review_decision" >&2
         elif [ "$review_requests_count" -gt 0 ]; then
             echo "   👁️  Review status: $review_requests_count review(s) requested" >&2
         else
-            echo "   👁️  Review status: No reviews required" >&2
+            echo "   👁️  Review status: None" >&2
         fi
 
         if [ "$check_count" -eq 0 ] && [ "$checks_json" != "" ] && [ "$checks_json" != "[]" ] && [ "$no_checks_configured" = "false" ]; then
@@ -207,7 +207,7 @@ wait_for_pr_checks() {
         fi
 
         if [ "$all_completed" = "true" ] && [ "$all_success" = "true" ] && [ "$reviews_pending" = "false" ]; then
-            if [ "$review_decision" = "APPROVED" ] || [ "$review_decision" = "null" ]; then
+            if [ "$review_decision" = "APPROVED" ] || [ "$review_decision" = "null" ] || [ -z "$review_decision" ]; then
                 echo "✅ $iteration_display All PR checks and reviews passed" >&2
                 return 0
             fi
