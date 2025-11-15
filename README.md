@@ -45,6 +45,14 @@ chmod +x continuous-claude
 sudo mv continuous-claude /usr/local/bin/
 ```
 
+To uninstall `continuous-claude`:
+
+```bash
+rm ~/.local/bin/continuous-claude
+# or if you installed to /usr/local/bin:
+sudo rm /usr/local/bin/continuous-claude
+```
+
 ### Prerequisites
 
 Before using `continuous-claude`, you need:
@@ -85,16 +93,6 @@ continuous-claude -p "refactor code" -m 3 --owner AnandChowdhary --repo continuo
 continuous-claude -p "test changes" -m 2 --owner AnandChowdhary --repo continuous-claude --disable-commits
 ```
 
-## 🗑️ Uninstall
-
-To uninstall `continuous-claude`:
-
-```bash
-rm ~/.local/bin/continuous-claude
-# or if you installed to /usr/local/bin:
-sudo rm /usr/local/bin/continuous-claude
-```
-
 ## 📊 Example output
 
 Here's what a successful run looks like:
@@ -117,16 +115,6 @@ Here's what a successful run looks like:
 🎉 Done with total cost: $0.042
 ```
 
-## 🔄 Releases
-
-This project uses automated semantic versioning based on commit messages:
-
-- **Major version** (1.0.0): Breaking changes (commits with `BREAKING CHANGE`, `feat!`, `fix!`, etc.)
-- **Minor version** (0.1.0): New features (commits starting with `feat:`)
-- **Patch version** (0.0.1): Bug fixes and other changes
-
-Every push to `main` automatically creates a new GitHub release. View all releases on the [releases page](https://github.com/AnandChowdhary/continuous-claude/releases).
-
 ## 📃 License
 
-MIT (c) [Anand Chowdhary](https://anandchowdhary.com)
+MIT ©️ [Anand Chowdhary](https://anandchowdhary.com)
