@@ -390,7 +390,8 @@ continuous_claude_commit() {
         return 1
     fi
 
-    echo "🔍 $iteration_display PR #$pr_number created, waiting for checks..." >&2
+    echo "🔍 $iteration_display PR #$pr_number created, waiting 5 seconds for GitHub to set up..." >&2
+    sleep 5
     if ! wait_for_pr_checks "$pr_number" "$GITHUB_OWNER" "$GITHUB_REPO" "$iteration_display"; then
         echo "⚠️  $iteration_display PR checks failed or timed out" >&2
         git checkout "$current_branch" >/dev/null 2>&1
