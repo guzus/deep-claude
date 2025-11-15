@@ -64,7 +64,7 @@ validate_arguments() {
     fi
 
     if ! [[ "$MAX_RUNS" =~ ^[0-9]+$ ]]; then
-        echo "❌ Error: MAX_RUNS must be a non-negative integer (0 for infinite)" >&2
+        echo "❌ Error: MAX_RUNS must be a non-negative integer" >&2
         exit 1
     fi
 
@@ -121,7 +121,6 @@ wait_for_pr_checks() {
         local checks_json
         local no_checks_configured=false
         if ! checks_json=$(gh pr checks "$pr_number" --repo "$owner/$repo" --json state,bucket 2>&1); then
-            # Check if the error is because there are no checks configured
             if echo "$checks_json" | grep -q "no checks"; then
                 echo "   📊 No checks configured" >&2
                 no_checks_configured=true
@@ -138,11 +137,9 @@ wait_for_pr_checks() {
             echo "   📊 Found $check_count check(s)" >&2
         fi
         
-        # Initialize check status flags
         local all_completed=true
         local all_success=true
         
-        # If checks are configured but none found yet, mark as not completed
         if [ "$no_checks_configured" = "false" ] && [ "$check_count" -eq 0 ]; then
             all_completed=false
         fi
@@ -157,7 +154,6 @@ wait_for_pr_checks() {
                 local state=$(echo "$checks_json" | jq -r ".[$idx].state")
                 local bucket=$(echo "$checks_json" | jq -r ".[$idx].bucket // \"pending\"")
 
-                # Check if the check is still in progress (not completed)
                 if [ "$bucket" = "pending" ] || [ "$bucket" = "null" ]; then
                     all_completed=false
                     pending_count=$((pending_count + 1))
@@ -174,7 +170,6 @@ wait_for_pr_checks() {
             echo "   ✓ Success: $success_count | ⏳ Pending: $pending_count | ✗ Failed: $failed_count" >&2
         fi
 
-        # Check review status
         local pr_info
         if ! pr_info=$(gh pr view "$pr_number" --repo "$owner/$repo" --json reviewDecision,reviewRequests 2>&1); then
             echo "⚠️  $iteration_display Failed to get PR review status: $pr_info" >&2
@@ -184,13 +179,11 @@ wait_for_pr_checks() {
         local review_decision=$(echo "$pr_info" | jq -r '.reviewDecision // "null"')
         local review_requests_count=$(echo "$pr_info" | jq '.reviewRequests | length' 2>/dev/null || echo "0")
         
-        # Check if reviews are required and pending
         local reviews_pending=false
         if [ "$review_decision" = "REVIEW_REQUIRED" ] || [ "$review_requests_count" -gt 0 ]; then
             reviews_pending=true
         fi
         
-        # Display review status
         if [ "$review_decision" != "null" ]; then
             echo "   👁️  Review status: $review_decision" >&2
         elif [ "$review_requests_count" -gt 0 ]; then
@@ -199,9 +192,7 @@ wait_for_pr_checks() {
             echo "   👁️  Review status: No reviews required" >&2
         fi
 
-        # If we have checks that haven't started yet, wait (but only for a limited time)
         if [ "$check_count" -eq 0 ] && [ "$checks_json" != "" ] && [ "$checks_json" != "[]" ] && [ "$no_checks_configured" = "false" ]; then
-            # Only wait for checks if we haven't been waiting too long
             if [ "$iteration" -lt 18 ]; then
                 echo "⏳ Waiting for checks to start... (will timeout after 3 minutes)" >&2
                 echo "" >&2
@@ -210,13 +201,11 @@ wait_for_pr_checks() {
                 continue
             else
                 echo "   ⚠️  No checks found after waiting, proceeding without checks" >&2
-                # Set flags to indicate checks are "done" (none exist)
                 all_completed=true
                 all_success=true
             fi
         fi
 
-        # Check if everything is ready (checks passed/none and no pending reviews)
         if [ "$all_completed" = "true" ] && [ "$all_success" = "true" ] && [ "$reviews_pending" = "false" ]; then
             if [ "$review_decision" = "APPROVED" ] || [ "$review_decision" = "null" ]; then
                 echo "✅ $iteration_display All PR checks and reviews passed" >&2
@@ -224,12 +213,10 @@ wait_for_pr_checks() {
             fi
         fi
         
-        # Show status when checks pass but reviews are pending
         if [ "$all_completed" = "true" ] && [ "$all_success" = "true" ] && [ "$reviews_pending" = "true" ]; then
             echo "   ✅ All checks passed, but waiting for review..." >&2
         fi
 
-        # Check for failures
         if [ "$all_completed" = "true" ] && [ "$all_success" = "false" ]; then
             echo "❌ $iteration_display PR checks failed" >&2
             return 1
@@ -240,7 +227,6 @@ wait_for_pr_checks() {
             return 1
         fi
 
-        # Still waiting for checks or reviews
         local waiting_items=()
         
         if [ "$all_completed" = "false" ]; then
@@ -310,8 +296,19 @@ continuous_claude_commit() {
     fi
 
     local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-    local timestamp=$(date +%s)
-    local branch_name="${GIT_BRANCH_PREFIX}${iteration_num}-${timestamp}"
+    local date_str=$(date +%Y-%m-%d)
+    
+    local random_hash
+    if command -v openssl >/dev/null 2>&1; then
+        random_hash=$(openssl rand -hex 4)
+    elif [ -r /dev/urandom ]; then
+        random_hash=$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 8)
+    else
+        random_hash=$(printf "%x" $(($(date +%s) % 100000000)))$(printf "%x" $$)
+        random_hash=${random_hash:0:8}
+    fi
+    
+    local branch_name="${GIT_BRANCH_PREFIX}iteration-${iteration_num}/${date_str}-${random_hash}"
     
     echo "🌿 $iteration_display Creating branch: $branch_name" >&2
     
@@ -499,7 +496,6 @@ execute_single_iteration() {
     local iteration_display=$(get_iteration_display $iteration_num $MAX_RUNS $extra_iterations)
     echo "🔄 $iteration_display Starting iteration..." >&2
 
-    # Construct the enhanced prompt with notes file support
     local enhanced_prompt="## CONTINUOUS WORKFLOW CONTEXT
 
 This is part of a continuous development loop where work happens incrementally across multiple iterations. You might run once, then a human developer might make changes, then you run again, and so on. This could happen daily or on any schedule.
@@ -512,7 +508,6 @@ $PROMPT
 
 "
 
-    # Read notes file if it exists
     if [ -f "$NOTES_FILE" ]; then
         local notes_content
         notes_content=$(cat "$NOTES_FILE")
@@ -525,7 +520,6 @@ $notes_content
 "
     fi
 
-    # Add instructions for maintaining the notes file
     enhanced_prompt+="## ITERATION NOTES
 
 "
