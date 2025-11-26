@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## [v0.10.0] - 2025-11-26
+
+### What's Changed
+
+- :sparkles: Add auto-update functionality with startup checks and manual update command (#26) (6bb6019)
+
+**Full Changelog**: https://github.com/AnandChowdhary/continuous-claude/compare/v0.9.1...v0.10.0
+
+### Installation
+
+Install with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/refs/tags/v0.10.0/install.sh | bash
+```
+
+Or download the script directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/refs/tags/v0.10.0/continuous_claude.sh -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
 ## [v0.9.1] - 2025-11-24
 
 ### What's Changed
