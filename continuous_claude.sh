@@ -67,6 +67,7 @@ Continuous Claude - Run Claude Code iteratively with automatic PR management
 
 USAGE:
     continuous-claude -p "prompt" (-m max-runs | --max-cost max-cost) --owner owner --repo repo [options]
+    continuous-claude update
 
 REQUIRED OPTIONS:
     -p, --prompt <text>           The prompt/goal for Claude Code to work on
@@ -90,6 +91,9 @@ OPTIONAL FLAGS:
     --dry-run                     Simulate execution without making changes
     --completion-signal <phrase>  Phrase that agents output when project is complete (default: "CONTINUOUS_CLAUDE_PROJECT_COMPLETE")
     --completion-threshold <num>  Number of consecutive signals to stop early (default: 3)
+
+COMMANDS:
+    update                        Check for and install the latest version
 
 EXAMPLES:
     # Run 5 iterations to fix bugs
@@ -123,11 +127,17 @@ EXAMPLES:
     continuous-claude -p "Add unit tests to all files" -m 50 --owner myuser --repo myproject \\
         --completion-threshold 3
 
+    # Check for and install updates
+    continuous-claude update
+
 REQUIREMENTS:
     - Claude Code CLI (https://claude.ai/code)
     - GitHub CLI (gh) - authenticated with 'gh auth login'
     - jq - JSON parsing utility
     - Git repository (unless --disable-commits is used)
+    
+NOTE:
+    continuous-claude automatically checks for updates at startup. You can press 'N' to skip the update.
 
 For more information, visit: https://github.com/AnandChowdhary/continuous-claude
 EOF
@@ -135,6 +145,230 @@ EOF
 
 show_version() {
     echo "continuous-claude version $VERSION"
+}
+
+get_latest_version() {
+    # Fetch the latest release version from GitHub using gh CLI
+    local latest_version
+    if ! command -v gh &> /dev/null; then
+        return 1
+    fi
+    
+    latest_version=$(gh release view --repo AnandChowdhary/continuous-claude --json tagName --jq '.tagName' 2>/dev/null)
+    if [ -z "$latest_version" ]; then
+        return 1
+    fi
+    
+    echo "$latest_version"
+    return 0
+}
+
+compare_versions() {
+    # Compare two version strings (e.g., "v0.9.1" and "v0.10.0")
+    # Returns 0 if they're equal, 1 if first is older, 2 if first is newer
+    local ver1="$1"
+    local ver2="$2"
+    
+    # Remove 'v' prefix if present
+    ver1="${ver1#v}"
+    ver2="${ver2#v}"
+    
+    # Remove any pre-release suffix (e.g., -beta, -rc1) for simple comparison
+    ver1="${ver1%%-*}"
+    ver2="${ver2%%-*}"
+    
+    if [ "$ver1" = "$ver2" ]; then
+        return 0
+    fi
+    
+    # Split versions and compare using safer array creation
+    local IFS=.
+    local i ver1_arr ver2_arr
+    read -ra ver1_arr <<< "$ver1"
+    read -ra ver2_arr <<< "$ver2"
+    
+    # Fill empty positions with zeros
+    for ((i=${#ver1_arr[@]}; i<${#ver2_arr[@]}; i++)); do
+        ver1_arr[i]=0
+    done
+    for ((i=${#ver2_arr[@]}; i<${#ver1_arr[@]}; i++)); do
+        ver2_arr[i]=0
+    done
+    
+    # Compare each component, fallback to string comparison if non-numeric
+    for ((i=0; i<${#ver1_arr[@]}; i++)); do
+        local c1="${ver1_arr[i]}"
+        local c2="${ver2_arr[i]}"
+        if [[ "$c1" =~ ^[0-9]+$ ]] && [[ "$c2" =~ ^[0-9]+$ ]]; then
+            if ((10#$c1 < 10#$c2)); then
+                return 1
+            fi
+            if ((10#$c1 > 10#$c2)); then
+                return 2
+            fi
+        else
+            # Fallback: string comparison for non-numeric components
+            if [[ "$c1" < "$c2" ]]; then
+                return 1
+            fi
+            if [[ "$c1" > "$c2" ]]; then
+                return 2
+            fi
+        fi
+    done
+    
+    return 0
+}
+
+get_script_path() {
+    # Get the absolute path to the current script
+    local script_path
+    script_path=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+    echo "$script_path"
+}
+
+download_and_install_update() {
+    local latest_version="$1"
+    local script_path="$2"
+    
+    echo "📥 Downloading version $latest_version..." >&2
+    
+    # Download the new version to a temporary file
+    local temp_file=$(mktemp)
+    # Use the specific release tag instead of main branch
+    local download_url="https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/${latest_version}/continuous_claude.sh"
+    local checksum_url="https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/${latest_version}/continuous_claude.sh.sha256"
+    if ! curl -fsSL "$download_url" -o "$temp_file"; then
+        echo "❌ Failed to download update" >&2
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Download the checksum file
+    local checksum_file=$(mktemp)
+    if ! curl -fsSL "$checksum_url" -o "$checksum_file"; then
+        echo "❌ Failed to download checksum file" >&2
+        rm -f "$temp_file" "$checksum_file"
+        return 1
+    fi
+    
+    # Verify checksum
+    local expected_checksum
+    expected_checksum=$(cat "$checksum_file" | awk '{print $1}')
+    local actual_checksum
+    actual_checksum=$(sha256sum "$temp_file" | awk '{print $1}')
+    if [ "$expected_checksum" != "$actual_checksum" ]; then
+        echo "❌ Checksum verification failed! Update aborted." >&2
+        rm -f "$temp_file" "$checksum_file"
+        return 1
+    fi
+    rm -f "$checksum_file"
+    
+    # Verify the downloaded file is valid bash
+    if ! bash -n "$temp_file" 2>/dev/null; then
+        echo "❌ Downloaded file has invalid syntax" >&2
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    # Make it executable
+    chmod +x "$temp_file"
+    
+    # Replace the current script
+    if ! mv "$temp_file" "$script_path"; then
+        echo "❌ Failed to replace script (permission denied?)" >&2
+        rm -f "$temp_file"
+        return 1
+    fi
+    
+    echo "✅ Updated to version $latest_version" >&2
+    return 0
+}
+
+check_for_updates() {
+    local skip_prompt="$1"
+    
+    # Get the latest version
+    local latest_version
+    if ! latest_version=$(get_latest_version); then
+        # Silently fail if we can't check for updates
+        return 0
+    fi
+    
+    # Compare versions
+    compare_versions "$VERSION" "$latest_version"
+    local comparison=$?
+    
+    if [ $comparison -eq 1 ]; then
+        # Current version is older
+        echo "" >&2
+        echo "🆕 A new version of continuous-claude is available: $latest_version (current: $VERSION)" >&2
+        
+        if [ "$skip_prompt" = "true" ]; then
+            return 0
+        fi
+        
+        echo -n "Would you like to update now? [y/N] " >&2
+        read -r response
+        
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            local script_path=$(get_script_path)
+            
+            if download_and_install_update "$latest_version" "$script_path"; then
+                echo "🔄 Restarting with new version..." >&2
+                # Restart the script with the original arguments
+                # This happens early in startup before main application logic runs
+                exec "$script_path" "$@"
+            else
+                echo "⚠️  Update failed. Continuing with current version." >&2
+            fi
+        else
+            echo "⏭️  Skipping update. You can update later with: continuous-claude update" >&2
+        fi
+    fi
+    
+    return 0
+}
+
+handle_update_command() {
+    echo "🔍 Checking for updates..." >&2
+    
+    local latest_version
+    if ! latest_version=$(get_latest_version); then
+        echo "❌ Failed to check for updates. Make sure 'gh' CLI is installed and authenticated." >&2
+        exit 1
+    fi
+    
+    compare_versions "$VERSION" "$latest_version"
+    local comparison=$?
+    
+    if [ $comparison -eq 0 ]; then
+        echo "✅ You're already on the latest version ($VERSION)" >&2
+        exit 0
+    elif [ $comparison -eq 2 ]; then
+        echo "ℹ️  You're on a newer version ($VERSION) than the latest release ($latest_version)" >&2
+        exit 0
+    fi
+    
+    # Current version is older
+    echo "🆕 New version available: $latest_version (current: $VERSION)" >&2
+    echo -n "Would you like to update now? [y/N] " >&2
+    read -r response
+    
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        local script_path=$(get_script_path)
+        
+        if download_and_install_update "$latest_version" "$script_path"; then
+            echo "✅ Update complete! Version $latest_version is now installed." >&2
+            exit 0
+        else
+            echo "❌ Update failed." >&2
+            exit 1
+        fi
+    else
+        echo "⏭️  Update cancelled." >&2
+        exit 0
+    fi
 }
 
 parse_arguments() {
@@ -1193,9 +1427,18 @@ show_completion_summary() {
 }
 
 main() {
+    # Handle "update" command before parsing arguments
+    if [ "$1" = "update" ]; then
+        handle_update_command
+        exit 0
+    fi
+    
     parse_arguments "$@"
     validate_arguments
     validate_requirements
+    
+    # Check for updates at startup
+    check_for_updates false "$@"
     
     # Handle --list-worktrees flag
     if [ "$LIST_WORKTREES" = "true" ]; then

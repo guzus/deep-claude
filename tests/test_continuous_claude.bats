@@ -547,3 +547,299 @@ setup() {
     
     rm -f "$error_log"
 }
+
+@test "get_latest_version returns version when gh is available" {
+    source "$SCRIPT_PATH"
+    
+    # Mock gh to return a properly formatted JSON for jq
+    function gh() {
+        if [ "$1" = "release" ] && [ "$2" = "view" ]; then
+            # Return JSON with correct format that includes jq processing
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[i]}" = "--jq" ]; then
+                    # Return just the tagName value
+                    echo "v0.10.0"
+                    return 0
+                fi
+            done
+            echo '{"tagName":"v0.10.0"}'
+        fi
+    }
+    export -f gh
+    
+    run get_latest_version
+    
+    assert_success
+    assert_output "v0.10.0"
+}
+
+@test "get_latest_version fails when gh is not available" {
+    source "$SCRIPT_PATH"
+    
+    # Mock command to fail only for gh
+    function command() {
+        if [ "$2" = "gh" ]; then
+            return 1
+        fi
+        builtin command "$@"
+    }
+    export -f command
+    
+    run get_latest_version
+    
+    assert_failure
+}
+
+@test "compare_versions detects equal versions" {
+    source "$SCRIPT_PATH"
+    
+    run compare_versions "v0.9.1" "v0.9.1"
+    assert [ $status -eq 0 ]
+    
+    run compare_versions "0.9.1" "v0.9.1"
+    assert [ $status -eq 0 ]
+}
+
+@test "compare_versions detects older version" {
+    source "$SCRIPT_PATH"
+    
+    run compare_versions "v0.9.1" "v0.10.0"
+    assert [ $status -eq 1 ]
+    
+    run compare_versions "v0.9.1" "v0.9.2"
+    assert [ $status -eq 1 ]
+}
+
+@test "compare_versions detects newer version" {
+    source "$SCRIPT_PATH"
+    
+    run compare_versions "v0.10.0" "v0.9.1"
+    assert [ $status -eq 2 ]
+    
+    run compare_versions "v1.0.0" "v0.9.1"
+    assert [ $status -eq 2 ]
+}
+
+@test "compare_versions handles pre-release versions" {
+    source "$SCRIPT_PATH"
+    
+    # Pre-release suffixes should be stripped for comparison
+    run compare_versions "v1.0.0-beta" "v1.0.0"
+    assert [ $status -eq 0 ]
+    
+    run compare_versions "v1.0.0-rc1" "v1.0.0-rc2"
+    assert [ $status -eq 0 ]
+    
+    run compare_versions "v1.0.0-beta" "v1.0.1"
+    assert [ $status -eq 1 ]
+}
+
+@test "get_script_path returns script path" {
+    source "$SCRIPT_PATH"
+    
+    # Mock readlink and realpath
+    function readlink() {
+        if [ "$1" = "-f" ]; then
+            echo "/usr/local/bin/continuous-claude"
+            return 0
+        fi
+        return 1
+    }
+    export -f readlink
+    
+    run get_script_path
+    
+    assert_success
+    assert_output "/usr/local/bin/continuous-claude"
+}
+
+@test "download_and_install_update downloads and replaces script" {
+    source "$SCRIPT_PATH"
+    
+    # Create a temporary script to act as the current script
+    local temp_script=$(mktemp)
+    echo "#!/bin/bash" > "$temp_script"
+    echo "echo 'old version'" >> "$temp_script"
+    chmod +x "$temp_script"
+    
+    # Mock curl to write a new script and checksum file
+    function curl() {
+        local output_file=""
+        for ((i=1; i<=$#; i++)); do
+            if [ "${!i}" = "-o" ]; then
+                ((i++))
+                output_file="${!i}"
+                break
+            fi
+        done
+        
+        if [ -n "$output_file" ]; then
+            # Check if this is the checksum file or the script file
+            if [[ "$output_file" == *".sha256"* ]] || [[ "${@}" == *".sha256"* ]]; then
+                # Write a dummy checksum
+                echo "dummychecksum123456789  continuous_claude.sh" > "$output_file"
+            else
+                # Write the new script
+                echo "#!/bin/bash" > "$output_file"
+                echo "echo 'new version'" >> "$output_file"
+            fi
+            return 0
+        fi
+        return 1
+    }
+    
+    # Mock sha256sum to return matching checksum
+    function sha256sum() {
+        echo "dummychecksum123456789  $1"
+    }
+    
+    export -f curl sha256sum
+    
+    run download_and_install_update "v0.10.0" "$temp_script"
+    
+    assert_success
+    assert_output --partial "Updated to version v0.10.0"
+    
+    # Verify the script was replaced
+    local content=$(cat "$temp_script")
+    if ! echo "$content" | grep -q "new version"; then
+        fail "Script was not replaced with new version"
+    fi
+    
+    rm -f "$temp_script"
+}
+
+@test "download_and_install_update preserves execute permissions" {
+    source "$SCRIPT_PATH"
+    
+    # Create a temporary script with execute permissions
+    local temp_script=$(mktemp)
+    echo "#!/bin/bash" > "$temp_script"
+    echo "echo 'old version'" >> "$temp_script"
+    chmod +x "$temp_script"
+    
+    # Verify initial permissions include execute
+    if [ ! -x "$temp_script" ]; then
+        fail "Initial script should be executable"
+    fi
+    
+    # Mock curl to write a new script (without execute permissions) and checksum
+    function curl() {
+        local output_file=""
+        for ((i=1; i<=$#; i++)); do
+            if [ "${!i}" = "-o" ]; then
+                ((i++))
+                output_file="${!i}"
+                break
+            fi
+        done
+        
+        if [ -n "$output_file" ]; then
+            # Check if this is the checksum file or the script file
+            if [[ "$output_file" == *".sha256"* ]] || [[ "${@}" == *".sha256"* ]]; then
+                # Write a dummy checksum
+                echo "dummychecksum123456789  continuous_claude.sh" > "$output_file"
+            else
+                # Write the new script without execute permissions
+                echo "#!/bin/bash" > "$output_file"
+                echo "echo 'new version'" >> "$output_file"
+                # Note: curl doesn't set execute permissions
+            fi
+            return 0
+        fi
+        return 1
+    }
+    
+    # Mock sha256sum to return matching checksum
+    function sha256sum() {
+        echo "dummychecksum123456789  $1"
+    }
+    
+    export -f curl sha256sum
+    
+    run download_and_install_update "v0.10.0" "$temp_script"
+    
+    assert_success
+    
+    # Verify the script is still executable after update
+    if [ ! -x "$temp_script" ]; then
+        fail "Script should remain executable after update"
+    fi
+    
+    rm -f "$temp_script"
+}
+
+@test "download_and_install_update fails on download error" {
+    source "$SCRIPT_PATH"
+    
+    local temp_script=$(mktemp)
+    
+    # Mock curl to fail
+    function curl() {
+        return 1
+    }
+    export -f curl
+    
+    run download_and_install_update "v0.10.0" "$temp_script"
+    
+    assert_failure
+    assert_output --partial "Failed to download update"
+    
+    rm -f "$temp_script"
+}
+
+@test "check_for_updates with skip_prompt does not prompt" {
+    source "$SCRIPT_PATH"
+    
+    VERSION="v0.9.1"
+    
+    # Mock get_latest_version
+    function get_latest_version() {
+        echo "v0.10.0"
+        return 0
+    }
+    export -f get_latest_version
+    
+    run check_for_updates true
+    
+    assert_success
+    assert_output --partial "A new version of continuous-claude is available"
+    refute_output --partial "Would you like to update now?"
+}
+
+@test "handle_update_command shows already on latest when versions match" {
+    source "$SCRIPT_PATH"
+    
+    VERSION="v0.10.0"
+    
+    # Mock get_latest_version
+    function get_latest_version() {
+        echo "v0.10.0"
+        return 0
+    }
+    export -f get_latest_version
+    
+    run handle_update_command
+    
+    assert_success
+    assert_output --partial "You're already on the latest version"
+}
+
+@test "handle_update_command shows newer version message when ahead" {
+    source "$SCRIPT_PATH"
+    
+    VERSION="v1.0.0"
+    
+    # Mock get_latest_version
+    function get_latest_version() {
+        echo "v0.10.0"
+        return 0
+    }
+    export -f get_latest_version
+    
+    run handle_update_command
+    
+    assert_success
+    assert_output --partial "You're on a newer version"
+}

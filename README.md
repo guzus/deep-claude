@@ -190,6 +190,9 @@ continuous-claude -p "add unit tests to all files" -m 50 --owner AnandChowdhary 
 
 # Use custom completion signal
 continuous-claude -p "fix all bugs" -m 20 --owner AnandChowdhary --repo continuous-claude --completion-signal "ALL_BUGS_FIXED" --completion-threshold 2
+
+# Check for and install updates
+continuous-claude update
 ```
 
 ### Running in parallel
