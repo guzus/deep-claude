@@ -5,6 +5,8 @@ VERSION="v0.11.0"
 ADDITIONAL_FLAGS="--dangerously-skip-permissions --output-format json"
 
 NOTES_FILE="SHARED_TASK_NOTES.md"
+AUTO_UPDATE=false
+DISABLE_UPDATES=false
 
 PROMPT_JQ_INSTALL="Please install jq for JSON parsing"
 
@@ -80,6 +82,8 @@ OPTIONAL FLAGS:
     --owner <owner>               GitHub repository owner (auto-detected from git remote if not provided)
     --repo <repo>                 GitHub repository name (auto-detected from git remote if not provided)
     --disable-commits             Disable automatic commits and PR creation
+    --auto-update                 Automatically install updates when available
+    --disable-updates             Skip all update checks and prompts
     --git-branch-prefix <prefix>  Branch prefix for iterations (default: "continuous-claude/")
     --merge-strategy <strategy>   PR merge strategy: squash, merge, or rebase (default: "squash")
     --notes-file <file>           Shared notes file for iteration context (default: "SHARED_TASK_NOTES.md")
@@ -288,6 +292,10 @@ download_and_install_update() {
 check_for_updates() {
     local skip_prompt="$1"
     
+    if [ "$DISABLE_UPDATES" = "true" ]; then
+        return 0
+    fi
+
     # Get the latest version
     local latest_version
     if ! latest_version=$(get_latest_version); then
@@ -308,9 +316,18 @@ check_for_updates() {
             return 0
         fi
         
-        echo -n "Would you like to update now? [y/N] " >&2
-        read -r response
-        
+        local response
+        if [ "$AUTO_UPDATE" = "true" ]; then
+            response="y"
+        else
+            echo -n "Would you like to update now? [y/N] " >&2
+            if ! read -t 60 -r response; then
+                echo "" >&2
+                echo "⏱️  No response received within 60 seconds, skipping update." >&2
+                response="n"
+            fi
+        fi
+
         if [[ "$response" =~ ^[Yy]$ ]]; then
             local script_path=$(get_script_path)
             
@@ -331,6 +348,11 @@ check_for_updates() {
 }
 
 handle_update_command() {
+    if [ "$DISABLE_UPDATES" = "true" ]; then
+        echo "⚠️  Updates are disabled via --disable-updates flag. Skipping." >&2
+        exit 0
+    fi
+
     echo "🔍 Checking for updates..." >&2
     
     local latest_version
@@ -352,9 +374,19 @@ handle_update_command() {
     
     # Current version is older
     echo "🆕 New version available: $latest_version (current: $VERSION)" >&2
-    echo -n "Would you like to update now? [y/N] " >&2
-    read -r response
-    
+
+    local response
+    if [ "$AUTO_UPDATE" = "true" ]; then
+        response="y"
+    else
+        echo -n "Would you like to update now? [y/N] " >&2
+        if ! read -t 60 -r response; then
+            echo "" >&2
+            echo "⏱️  No response received within 60 seconds, skipping update." >&2
+            response="n"
+        fi
+    fi
+
     if [[ "$response" =~ ^[Yy]$ ]]; then
         local script_path=$(get_script_path)
         
@@ -459,6 +491,14 @@ parse_arguments() {
                 ENABLE_COMMITS=false
                 shift
                 ;;
+            --auto-update)
+                AUTO_UPDATE=true
+                shift
+                ;;
+            --disable-updates)
+                DISABLE_UPDATES=true
+                shift
+                ;;
             --notes-file)
                 NOTES_FILE="$2"
                 shift 2
@@ -495,6 +535,29 @@ parse_arguments() {
                 # Collect unknown flags to forward to claude
                 EXTRA_CLAUDE_FLAGS+=("$1")
                 shift
+                ;;
+        esac
+    done
+}
+
+parse_update_flags() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --auto-update)
+                AUTO_UPDATE=true
+                shift
+                ;;
+            --disable-updates)
+                DISABLE_UPDATES=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "❌ Unknown flag for update command: $1" >&2
+                exit 1
                 ;;
         esac
     done
@@ -1493,6 +1556,8 @@ show_completion_summary() {
 main() {
     # Handle "update" command before parsing arguments
     if [ "$1" = "update" ]; then
+        shift
+        parse_update_flags "$@"
         handle_update_command
         exit 0
     fi

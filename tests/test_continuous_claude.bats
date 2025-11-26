@@ -50,6 +50,22 @@ setup() {
     assert_equal "$DRY_RUN" "true"
 }
 
+@test "parse_arguments handles auto-update flag" {
+    source "$SCRIPT_PATH"
+    AUTO_UPDATE="false"
+    parse_arguments --auto-update
+    
+    assert_equal "$AUTO_UPDATE" "true"
+}
+
+@test "parse_arguments handles disable-updates flag" {
+    source "$SCRIPT_PATH"
+    DISABLE_UPDATES="false"
+    parse_arguments --disable-updates
+    
+    assert_equal "$DISABLE_UPDATES" "true"
+}
+
 @test "validate_arguments fails without prompt" {
     source "$SCRIPT_PATH"
     PROMPT=""
@@ -806,6 +822,78 @@ setup() {
     assert_success
     assert_output --partial "A new version of continuous-claude is available"
     refute_output --partial "Would you like to update now?"
+}
+
+@test "parse_update_flags handles auto-update and disable-updates" {
+    source "$SCRIPT_PATH"
+    AUTO_UPDATE="false"
+    DISABLE_UPDATES="false"
+    
+    parse_update_flags --auto-update --disable-updates
+    
+    assert_equal "$AUTO_UPDATE" "true"
+    assert_equal "$DISABLE_UPDATES" "true"
+}
+
+@test "check_for_updates skips when updates disabled" {
+    source "$SCRIPT_PATH"
+    
+    DISABLE_UPDATES="true"
+    function get_latest_version() {
+        echo "should not run"
+        return 1
+    }
+    export -f get_latest_version
+    
+    run check_for_updates false
+    
+    assert_success
+    assert_output ""
+}
+
+@test "handle_update_command skips when updates disabled" {
+    source "$SCRIPT_PATH"
+    
+    DISABLE_UPDATES="true"
+    
+    run handle_update_command
+    
+    assert_success
+    assert_output --partial "Updates are disabled via --disable-updates flag"
+}
+
+@test "handle_update_command auto-updates without prompt" {
+    source "$SCRIPT_PATH"
+    
+    AUTO_UPDATE="true"
+    DISABLE_UPDATES="false"
+    VERSION="v0.10.0"
+    
+    function get_latest_version() {
+        echo "v0.11.0"
+        return 0
+    }
+    
+    local flag_file="$BATS_TEST_TMPDIR/auto_update_called"
+    rm -f "$flag_file"
+    
+    function download_and_install_update() {
+        echo "called" > "$flag_file"
+        return 0
+    }
+    
+    function get_script_path() {
+        echo "/tmp/mock-script"
+    }
+    
+    export -f get_latest_version download_and_install_update get_script_path
+    
+    run handle_update_command
+    
+    assert_success
+    assert_output --partial "Update complete! Version v0.11.0 is now installed."
+    refute_output --partial "Would you like to update now?"
+    assert [ -f "$flag_file" ]
 }
 
 @test "handle_update_command shows already on latest when versions match" {
