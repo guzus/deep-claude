@@ -1097,7 +1097,7 @@ continuous_claude_commit() {
         echo "📦 $iteration_display (DRY RUN) Changes committed on branch: $branch_name" >&2
         echo "📤 $iteration_display (DRY RUN) Would push branch..." >&2
         echo "🔨 $iteration_display (DRY RUN) Would create pull request..." >&2
-        echo "✅ $iteration_display (DRY RUN) PR merged and local branch cleaned up" >&2
+        echo "✅ $iteration_display (DRY RUN) PR merged: <commit title would appear here>" >&2
         return 0
     fi
     
@@ -1170,7 +1170,7 @@ continuous_claude_commit() {
         return 1
     fi
 
-    echo "✅ $iteration_display PR merged and local branch cleaned up" >&2
+    echo "✅ $iteration_display PR #$pr_number merged: $commit_title" >&2
     
     # Ensure we're back on the main branch
     if ! git checkout "$main_branch" >/dev/null 2>&1; then

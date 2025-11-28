@@ -265,7 +265,7 @@ Here's what a successful run looks like:
 🔀 (1/1) Merging PR #893...
 📥 (1/1) Pulling latest from main...
 🗑️ (1/1) Deleting local branch: continuous-claude/iteration-1/2025-11-15-be939873
-✅ (1/1) PR merged and local branch cleaned up
+✅ (1/1) PR #893 merged: Add unit tests for authentication module
 🎉 Done with total cost: $0.042
 ```
 

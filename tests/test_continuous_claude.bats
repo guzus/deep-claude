@@ -1369,3 +1369,42 @@ setup() {
     run validate_arguments
     assert_success
 }
+
+@test "continuous_claude_commit dry run shows PR merged message with placeholder" {
+    source "$SCRIPT_PATH"
+    
+    DRY_RUN="true"
+    ENABLE_COMMITS="true"
+    GITHUB_OWNER="user"
+    GITHUB_REPO="repo"
+    
+    # Mock git to return mock branch and indicate changes exist
+    function git() {
+        case "$1" in
+            rev-parse)
+                if [ "$2" = "--git-dir" ]; then
+                    return 0
+                elif [ "$2" = "--abbrev-ref" ]; then
+                    echo "main"
+                fi
+                ;;
+            diff)
+                return 1  # Indicate there are changes (non-zero = changes exist)
+                ;;
+            ls-files)
+                echo ""  # No untracked files
+                ;;
+            checkout|branch)
+                return 0
+                ;;
+        esac
+        return 0
+    }
+    export -f git
+    
+    # Run the function with test branch name and main branch
+    run continuous_claude_commit "(1/1)" "test-branch" "main"
+    
+    assert_success
+    assert_output --partial "(DRY RUN) PR merged: <commit title would appear here>"
+}
