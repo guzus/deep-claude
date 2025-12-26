@@ -30,6 +30,23 @@ func (c *Client) IsRepo() bool {
 	return err == nil && strings.TrimSpace(string(output)) == "true"
 }
 
+// HasCommits reports whether the repository has at least one commit.
+func (c *Client) HasCommits() bool {
+	cmd := exec.Command("git", "rev-parse", "--verify", "HEAD")
+	cmd.Dir = c.workDir
+	return cmd.Run() == nil
+}
+
+// InitRepo initializes a new git repository in the working directory.
+func (c *Client) InitRepo() error {
+	cmd := exec.Command("git", "init")
+	cmd.Dir = c.workDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to initialize git repository: %w\n%s", err, output)
+	}
+	return nil
+}
+
 // CurrentBranch returns the current branch name.
 func (c *Client) CurrentBranch() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")

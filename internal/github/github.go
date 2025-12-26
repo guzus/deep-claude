@@ -52,6 +52,26 @@ func (c *Client) CheckAuth() error {
 	return nil
 }
 
+// CreateRepo creates a new GitHub repository from the working directory.
+func (c *Client) CreateRepo(name string, private bool, owner string) error {
+	args := []string{"repo", "create", name, "--source", ".", "--confirm"}
+	if owner != "" {
+		args = append(args, "--owner", owner)
+	}
+	if private {
+		args = append(args, "--private")
+	} else {
+		args = append(args, "--public")
+	}
+
+	cmd := exec.Command("gh", args...)
+	cmd.Dir = c.workDir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create GitHub repository: %w\n%s", err, output)
+	}
+	return nil
+}
+
 // CreatePR creates a new pull request.
 func (c *Client) CreatePR(title, body, base string) (string, error) {
 	args := []string{"pr", "create", "--title", title, "--body", body}
