@@ -1,0 +1,223 @@
+name: Auto Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip if commit is a release commit (to avoid infinite loop)
+    if: "!startsWith(github.event.head_commit.message, ':bookmark: Release version')"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          git fetch --tags --force
+
+          # Get the latest production release tag (excluding pre-release tags)
+          LATEST_TAG=$(git tag -l "v*.*.*" | grep -v "-" | sort -V | tail -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+          fi
+
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "Latest production tag: $LATEST_TAG"
+
+      - name: Determine version bump
+        id: version_bump
+        run: |
+          LATEST_TAG="${{ steps.get_latest_tag.outputs.latest_tag }}"
+
+          # Remove 'v' prefix if present
+          VERSION=${LATEST_TAG#v}
+
+          # Split version into major.minor.patch
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Get commit messages since last tag
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            COMMITS=$(git log --pretty=format:"%s" --no-merges)
+          else
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"%s" --no-merges)
+          fi
+
+          echo "Commits since last release:"
+          echo "$COMMITS"
+
+          # Determine bump type based on commit messages
+          # Look for conventional commit prefixes and gitmoji
+          if echo "$COMMITS" | grep -qiE "^(breaking|BREAKING CHANGE|feat!|fix!|chore!|:boom:)"; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            BUMP_TYPE="major"
+          elif echo "$COMMITS" | grep -qiE "^(feat|:sparkles:)"; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            BUMP_TYPE="minor"
+          else
+            PATCH=$((PATCH + 1))
+            BUMP_TYPE="patch"
+          fi
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (${BUMP_TYPE} bump)"
+
+      - name: Check if release is needed
+        id: check_version
+        run: |
+          LATEST_TAG="${{ steps.get_latest_tag.outputs.latest_tag }}"
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+
+          if [ "$LATEST_TAG" = "$NEW_VERSION" ]; then
+            echo "No new commits to release (version unchanged: $LATEST_TAG)"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Get commits since last tag
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            COMMITS=$(git log --pretty=format:"%s" --no-merges)
+          else
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"%s" --no-merges)
+          fi
+
+          # Check if all commits are test/CI/docs related
+          TEST_ONLY=true
+          while IFS= read -r commit; do
+            if ! echo "$commit" | grep -qiE "^(:construction_worker:|:white_check_mark:|:green_heart:|:pencil:|test:|ci:|docs:)"; then
+              TEST_ONLY=false
+              break
+            fi
+          done <<< "$COMMITS"
+
+          if [ "$TEST_ONLY" = "true" ]; then
+            echo "Skipping release: only test/CI/docs changes"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Will create release: $LATEST_TAG → $NEW_VERSION"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version in main.go
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+          VERSION_NUM="${NEW_VERSION#v}"
+
+          # Update version in cmd/continuous-claude/main.go
+          sed -i 's/Version   = "[^"]*"/Version   = "'"$VERSION_NUM"'"/' cmd/continuous-claude/main.go
+
+          echo "Updated version to $VERSION_NUM in cmd/continuous-claude/main.go"
+          grep "Version" cmd/continuous-claude/main.go
+
+      - name: Generate release notes
+        id: release_notes
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          LATEST_TAG="${{ steps.get_latest_tag.outputs.latest_tag }}"
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+
+          # Get commits since last tag
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          cat > release_notes.md << EOF
+          ## What's Changed
+
+          $COMMITS
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LATEST_TAG}...${NEW_VERSION}
+          EOF
+
+          echo "Release notes generated"
+
+      - name: Update CHANGELOG
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+          DATE=$(date +%Y-%m-%d)
+
+          # Create new entry
+          cat > new_entry.md << EOF
+          ## [$NEW_VERSION] - $DATE
+
+          EOF
+
+          # Append release notes (excluding installation section), convert ## to ###
+          sed '/^## Installation$/,$d' release_notes.md | sed 's/^## /### /' >> new_entry.md
+          echo "" >> new_entry.md
+
+          # If CHANGELOG.md doesn't exist, create it
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# CHANGELOG" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+
+          # Create temp file with header
+          echo "# CHANGELOG" > temp_changelog.md
+          echo "" >> temp_changelog.md
+
+          # Add new entry
+          cat new_entry.md >> temp_changelog.md
+
+          # Add rest of existing changelog (skip header)
+          tail -n +3 CHANGELOG.md >> temp_changelog.md || true
+
+          mv temp_changelog.md CHANGELOG.md
+
+          echo "Updated CHANGELOG.md"
+
+      - name: Commit and push release
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add cmd/continuous-claude/main.go CHANGELOG.md
+          git commit -m ":bookmark: Release version $NEW_VERSION"
+
+          git push origin main
+
+          echo "Committed and pushed version bump to main"
+
+      - name: Create and push tag
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+
+          git tag "$NEW_VERSION"
+          git push origin "$NEW_VERSION"
+
+          echo "Created and pushed tag $NEW_VERSION"
+
+      # Note: The GitHub Release is created by go-release.yml workflow
+      # which triggers on tag push and builds/uploads binaries
+
+      - name: Release Summary
+        if: steps.check_version.outputs.should_release == 'true'
+        run: |
+          echo "Tagged ${{ steps.version_bump.outputs.new_version }}"
+          echo "Bump type: ${{ steps.version_bump.outputs.bump_type }}"
+          echo "The go-release.yml workflow will now build binaries and create the GitHub release."

@@ -75,63 +75,111 @@ Using Claude Code to drive iterative development, this script fully automates th
 
 ### Installation
 
-Install with a single command:
+#### Option 1: Install via Go (recommended)
+
+If you have Go installed, this is the quickest way to get started:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/main/install.sh | bash
+go install github.com/guzus/continuous-claude/cmd/continuous-claude@latest
 ```
 
-This will:
+The binary will be installed to your `$GOPATH/bin` directory. Make sure it's in your PATH.
 
-- Install `continuous-claude` to `~/.local/bin`
-- Check for required dependencies
-- Guide you through adding it to your PATH if needed
-
-### Manual installation
-
-If you prefer to install manually:
+#### Option 2: Build from source
 
 ```bash
-# Download the script
-curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/main/continuous_claude.sh -o continuous-claude
+# Clone the repository
+git clone https://github.com/guzus/continuous-claude.git
+cd continuous-claude
 
-# Make it executable
+# Build and install
+make build
+sudo mv build/continuous-claude /usr/local/bin/
+```
+
+#### Option 3: Download pre-built binary
+
+Pre-built binaries are available on the [Releases](https://github.com/guzus/continuous-claude/releases) page when attached to a release.
+
+**Linux (amd64)**
+```bash
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-amd64 -o continuous-claude
 chmod +x continuous-claude
-
-# Move to a directory in your PATH
 sudo mv continuous-claude /usr/local/bin/
 ```
 
-To uninstall `continuous-claude`:
+**Linux (arm64)**
+```bash
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-arm64 -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+```bash
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-darwin-arm64 -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
+**macOS (Intel)**
+```bash
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-darwin-amd64 -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+Download `continuous-claude-windows-amd64.exe` from the [Releases](https://github.com/guzus/continuous-claude/releases/latest) page and add it to your PATH.
+
+#### Verify checksums (optional)
+
+Each release includes `.sha256` checksum files. To verify your download:
 
 ```bash
-rm ~/.local/bin/continuous-claude
-# or if you installed to /usr/local/bin:
-sudo rm /usr/local/bin/continuous-claude
+# Download the checksum file
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-amd64.sha256 -o continuous-claude.sha256
+
+# Verify (adjust filename for your platform)
+sha256sum -c continuous-claude.sha256
+```
+
+#### Uninstall
+
+```bash
+rm /usr/local/bin/continuous-claude
+# or if installed via go install:
+rm $(go env GOPATH)/bin/continuous-claude
 ```
 
 ### Prerequisites
 
 Before using `continuous-claude`, you need:
 
-1. **[Claude Code CLI](https://code.claude.com)** - Authenticate with `claude auth`
+1. **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** - Authenticate with `claude auth`
 2. **[GitHub CLI](https://cli.github.com)** - Authenticate with `gh auth login`
-3. **jq** - Install with `brew install jq` (macOS) or `apt-get install jq` (Linux)
 
 ### Usage
 
 ```bash
-# Run with your prompt, max runs, and GitHub repo (owner and repo auto-detected from git remote)
-continuous-claude --prompt "add unit tests until all code is covered" --max-runs 5
+# Run with your prompt and max runs (owner and repo auto-detected from git remote)
+continuous-claude -p "add unit tests until all code is covered" --max-runs 5
 
 # Or explicitly specify the owner and repo
-continuous-claude --prompt "add unit tests until all code is covered" --max-runs 5 --owner AnandChowdhary --repo continuous-claude
+continuous-claude -p "add unit tests until all code is covered" --max-runs 5 --owner guzus --repo continuous-claude
 
 # Or run with a cost budget instead
-continuous-claude --prompt "add unit tests until all code is covered" --max-cost 10.00
+continuous-claude -p "add unit tests until all code is covered" --max-cost 10.00
 
 # Or run for a specific duration (time-boxed bursts)
-continuous-claude --prompt "add unit tests until all code is covered" --max-duration 2h
+continuous-claude -p "add unit tests until all code is covered" --max-duration 2h
+
+# Check version
+continuous-claude version
+
+# Check for updates
+continuous-claude update
 ```
 
 ## 🎯 Flags
@@ -212,9 +260,6 @@ continuous-claude -p "fix all bugs" -m 20 --completion-signal "ALL_BUGS_FIXED" -
 
 # Explicitly specify owner and repo (useful if git remote is not set up or not a GitHub repo)
 continuous-claude -p "add features" -m 5 --owner myuser --repo myproject
-
-# Check for and install updates
-continuous-claude update
 ```
 
 ### Running in parallel
@@ -269,6 +314,61 @@ Here's what a successful run looks like:
 🎉 Done with total cost: $0.042
 ```
 
+## 🛠️ Development
+
+### Building from source
+
+```bash
+# Clone the repository
+git clone https://github.com/guzus/continuous-claude.git
+cd continuous-claude
+
+# Install dependencies
+go mod download
+
+# Build
+make build
+
+# Run tests
+make test
+
+# Run linter
+make lint
+
+# Build for all platforms
+make build-all
+```
+
+### Project structure
+
+```
+continuous-claude/
+├── cmd/continuous-claude/    # Main entry point
+├── internal/
+│   ├── cli/                  # Cobra CLI commands
+│   ├── config/               # Configuration management
+│   ├── git/                  # Git operations
+│   ├── github/               # GitHub PR management
+│   ├── claude/               # Claude Code integration
+│   ├── notes/                # Shared notes handling
+│   ├── orchestrator/         # Main loop logic
+│   ├── ui/                   # Terminal output
+│   └── version/              # Update management
+├── Makefile                  # Build automation
+└── go.mod                    # Go module
+```
+
+### Setting up pre-commit hooks
+
+```bash
+# Option 1: Using pre-commit framework
+pip install pre-commit
+pre-commit install
+
+# Option 2: Simple git hooks
+./scripts/install-hooks.sh
+```
+
 ## 📃 License
 
-[MIT](./LICENSE) ©️ [Anand Chowdhary](https://anandchowdhary.com)
+[MIT](./LICENSE) ©️ [Anand Chowdhary](https://anandchowdhary.com), [guzus](https://github.com/guzus)
