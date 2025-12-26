@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="continuous-claude"
-REPO_URL="https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/main"
+REPO_URL="https://raw.githubusercontent.com/guzus/continuous-claude/main"
 
 echo "🔂 Installing Continuous Claude..."
 
@@ -92,5 +92,5 @@ echo ""
 echo "Get started with:"
 echo "  $BINARY_NAME --prompt \"your task\" --max-runs 5 --owner YourGitHubUser --repo your-repo"
 echo ""
-echo "For more information, visit: https://github.com/AnandChowdhary/continuous-claude"
+echo "For more information, visit: https://github.com/guzus/continuous-claude"
 
