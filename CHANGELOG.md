@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## [v0.2.2] - 2025-12-26
+
+### What's Changed
+
+- Port to Go (9962e97)
+
+**Full Changelog**: https://github.com/guzus/continuous-claude/compare/v0.2.1...v0.2.2
+
 ## [v0.2.1] - 2025-12-26
 
 ### What's Changed
