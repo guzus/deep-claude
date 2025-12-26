@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## [v0.1.1] - 2025-12-26
+
+### What's Changed
+
+- :construction_worker: Add auto-release workflow for Go project (#4) (623e7d6)
+- Fix release download (#3) (cb11248)
+- Update repository owner to guzus in install.sh (#2) (38b70e2)
+
+**Full Changelog**: https://github.com/guzus/continuous-claude/compare/v0.1.0...v0.1.1
+
 ## [v0.1.0] - 2025-12-26
 
 ### What's Changed
