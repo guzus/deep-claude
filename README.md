@@ -75,9 +75,19 @@ Using Claude Code to drive iterative development, this script fully automates th
 
 ### Installation
 
-#### Option 1: Install via Go (recommended)
+#### Option 1: One-liner install (recommended)
 
-If you have Go installed, this is the quickest way to get started:
+Install the latest release with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/guzus/continuous-claude/main/install.sh | bash
+```
+
+This automatically detects your OS and architecture, downloads the appropriate binary, and installs it to `~/.local/bin`.
+
+#### Option 2: Install via Go
+
+If you have Go installed:
 
 ```bash
 go install github.com/guzus/continuous-claude/cmd/continuous-claude@latest
@@ -85,7 +95,7 @@ go install github.com/guzus/continuous-claude/cmd/continuous-claude@latest
 
 The binary will be installed to your `$GOPATH/bin` directory. Make sure it's in your PATH.
 
-#### Option 2: Build from source
+#### Option 3: Build from source
 
 ```bash
 # Clone the repository
@@ -97,7 +107,7 @@ make build
 sudo mv build/continuous-claude /usr/local/bin/
 ```
 
-#### Option 3: Download pre-built binary
+#### Option 4: Download pre-built binary
 
 Pre-built binaries are available on the [Releases](https://github.com/guzus/continuous-claude/releases) page when attached to a release.
 

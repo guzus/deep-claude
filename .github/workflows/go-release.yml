@@ -149,7 +149,12 @@ jobs:
 
           ## Installation
 
-          ### Install via Go (recommended)
+          ### One-liner install (recommended)
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+          \`\`\`
+
+          ### Install via Go
           \`\`\`bash
           go install github.com/${{ github.repository }}/cmd/continuous-claude@${VERSION}
           \`\`\`
