@@ -58,6 +58,33 @@ func (c *Client) CurrentBranch() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+// DefaultBranch returns the default branch (main/master) from the remote.
+func (c *Client) DefaultBranch() (string, error) {
+	// Try to get the default branch from origin/HEAD
+	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD")
+	cmd.Dir = c.workDir
+	output, err := cmd.Output()
+	if err == nil {
+		// Output is like "refs/remotes/origin/main"
+		ref := strings.TrimSpace(string(output))
+		parts := strings.Split(ref, "/")
+		if len(parts) > 0 {
+			return parts[len(parts)-1], nil
+		}
+	}
+
+	// Fallback: check if main or master exists
+	for _, branch := range []string{"main", "master"} {
+		cmd := exec.Command("git", "rev-parse", "--verify", "refs/heads/"+branch)
+		cmd.Dir = c.workDir
+		if cmd.Run() == nil {
+			return branch, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not determine default branch")
+}
+
 // CreateBranch creates a new branch and switches to it.
 func (c *Client) CreateBranch(name string) error {
 	cmd := exec.Command("git", "checkout", "-b", name)

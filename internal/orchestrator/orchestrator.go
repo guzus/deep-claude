@@ -56,10 +56,10 @@ func New(cfg *config.Config, workDir string) (*Orchestrator, error) {
 		}
 	}
 
-	// Get current branch (requires at least one commit)
-	baseBranch, err := gitClient.CurrentBranch()
+	// Get default branch (main/master) to use as base for PRs
+	baseBranch, err := gitClient.DefaultBranch()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current branch: %w\n\nThis usually means the repository has no commits yet.\nPlease make an initial commit first:\n  git add . && git commit -m \"Initial commit\"", err)
+		return nil, fmt.Errorf("failed to get default branch: %w\n\nThis usually means the repository has no commits yet or no remote is configured.\nPlease make an initial commit and push first:\n  git add . && git commit -m \"Initial commit\" && git push -u origin main", err)
 	}
 
 	return &Orchestrator{
