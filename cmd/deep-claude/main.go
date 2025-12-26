@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/guzus/continuous-claude/internal/cli"
+	"github.com/guzus/deep-claude/internal/cli"
 )
 
 // Version information - set at build time

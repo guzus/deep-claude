@@ -1,4 +1,4 @@
-// Package config provides configuration management for Continuous Claude.
+// Package config provides configuration management for Deep Claude.
 package config
 
 import (
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Config holds all configuration for a Continuous Claude run.
+// Config holds all configuration for a Deep Claude run.
 type Config struct {
 	// Core settings
 	Prompt              string
@@ -46,11 +46,11 @@ func DefaultConfig() *Config {
 		MaxCost:             0,
 		MaxDuration:         0,
 		MergeStrategy:       "squash",
-		GitBranchPrefix:     "continuous-claude/",
+		GitBranchPrefix:     "deep-claude/",
 		NotesFile:           "SHARED_TASK_NOTES.md",
-		CompletionSignal:    "CONTINUOUS_CLAUDE_PROJECT_COMPLETE",
+		CompletionSignal:    "DEEP_CLAUDE_PROJECT_COMPLETE",
 		CompletionThreshold: 3,
-		WorktreeBaseDir:     "../continuous-claude-worktrees",
+		WorktreeBaseDir:     "../deep-claude-worktrees",
 	}
 }
 

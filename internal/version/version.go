@@ -18,9 +18,9 @@ const (
 	// GitHubOwner is the owner of the repository.
 	GitHubOwner = "guzus"
 	// GitHubRepo is the repository name.
-	GitHubRepo = "continuous-claude"
+	GitHubRepo = "deep-claude"
 	// ReleaseURL is the base URL for releases.
-	ReleaseURL = "https://github.com/guzus/continuous-claude/releases"
+	ReleaseURL = "https://github.com/guzus/deep-claude/releases"
 )
 
 // Info holds version information.
@@ -110,7 +110,7 @@ func DownloadUpdate(version string) (string, error) {
 	arch := getArch()
 	osName := getOS()
 
-	binaryName := fmt.Sprintf("continuous-claude-%s-%s", osName, arch)
+	binaryName := fmt.Sprintf("deep-claude-%s-%s", osName, arch)
 	url := fmt.Sprintf("%s/download/%s/%s", ReleaseURL, version, binaryName)
 
 	// Download to temp file
@@ -124,7 +124,7 @@ func DownloadUpdate(version string) (string, error) {
 		return "", fmt.Errorf("failed to download update: status %d", resp.StatusCode)
 	}
 
-	tmpFile, err := os.CreateTemp("", "continuous-claude-update-*")
+	tmpFile, err := os.CreateTemp("", "deep-claude-update-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}

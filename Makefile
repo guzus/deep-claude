@@ -1,7 +1,7 @@
-# Continuous Claude Makefile
+# Deep Claude Makefile
 
 # Build variables
-BINARY_NAME := continuous-claude
+BINARY_NAME := deep-claude
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -20,7 +20,7 @@ LDFLAGS := -ldflags "-s -w \
 
 # Directories
 BUILD_DIR := build
-CMD_DIR := cmd/continuous-claude
+CMD_DIR := cmd/deep-claude
 
 .PHONY: all build clean install test lint fmt help
 
@@ -117,7 +117,7 @@ dev:
 
 # Help
 help:
-	@echo "Continuous Claude - Build Commands"
+	@echo "Deep Claude - Build Commands"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""

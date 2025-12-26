@@ -9,11 +9,11 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-BINARY_NAME="continuous-claude"
-REPO="guzus/continuous-claude"
+BINARY_NAME="deep-claude"
+REPO="guzus/deep-claude"
 RELEASES_URL="https://github.com/${REPO}/releases/latest/download"
 
-echo "🔂 Installing Continuous Claude..."
+echo "🔂 Installing Deep Claude..."
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -60,7 +60,7 @@ if ! curl -fsSL "$DOWNLOAD_URL" -o "$INSTALL_DIR/$BINARY_NAME"; then
     echo ""
     echo "Try building from source instead:"
     echo "  git clone https://github.com/${REPO}.git"
-    echo "  cd continuous-claude && make build"
+    echo "  cd deep-claude && make build"
     exit 1
 fi
 

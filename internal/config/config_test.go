@@ -173,8 +173,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("default MergeStrategy = %q, want %q", cfg.MergeStrategy, "squash")
 	}
 
-	if cfg.GitBranchPrefix != "continuous-claude/" {
-		t.Errorf("default GitBranchPrefix = %q, want %q", cfg.GitBranchPrefix, "continuous-claude/")
+	if cfg.GitBranchPrefix != "deep-claude/" {
+		t.Errorf("default GitBranchPrefix = %q, want %q", cfg.GitBranchPrefix, "deep-claude/")
 	}
 
 	if cfg.NotesFile != "SHARED_TASK_NOTES.md" {

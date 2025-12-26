@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install git hooks for continuous-claude development
+# Install git hooks for deep-claude development
 
 set -e
 
@@ -10,7 +10,7 @@ echo "Installing git hooks..."
 # Pre-commit hook
 cat > "$HOOKS_DIR/pre-commit" << 'EOF'
 #!/bin/bash
-# Pre-commit hook for continuous-claude
+# Pre-commit hook for deep-claude
 # Runs linting and tests before allowing commit
 
 set -e

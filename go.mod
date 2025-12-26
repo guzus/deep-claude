@@ -1,4 +1,4 @@
-module github.com/guzus/continuous-claude
+module github.com/guzus/deep-claude
 
 go 1.21
 

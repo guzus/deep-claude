@@ -1,16 +1,16 @@
-// Package orchestrator provides the main loop logic for Continuous Claude.
+// Package orchestrator provides the main loop logic for Deep Claude.
 package orchestrator
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/guzus/continuous-claude/internal/claude"
-	"github.com/guzus/continuous-claude/internal/config"
-	"github.com/guzus/continuous-claude/internal/git"
-	"github.com/guzus/continuous-claude/internal/github"
-	"github.com/guzus/continuous-claude/internal/notes"
-	"github.com/guzus/continuous-claude/internal/ui"
+	"github.com/guzus/deep-claude/internal/claude"
+	"github.com/guzus/deep-claude/internal/config"
+	"github.com/guzus/deep-claude/internal/git"
+	"github.com/guzus/deep-claude/internal/github"
+	"github.com/guzus/deep-claude/internal/notes"
+	"github.com/guzus/deep-claude/internal/ui"
 )
 
 // Orchestrator manages the continuous development loop.
@@ -37,7 +37,7 @@ func New(cfg *config.Config, workDir string) (*Orchestrator, error) {
 
 	// Check if we're in a git repository first
 	if !gitClient.IsRepo() {
-		return nil, fmt.Errorf("not in a git repository\n\nContinuous Claude requires a local git repository to work in.\nPlease run from inside a cloned repository:\n  git clone https://github.com/OWNER/REPO.git\n  cd REPO\n  continuous-claude -p \"your task\"")
+		return nil, fmt.Errorf("not in a git repository\n\nDeep Claude requires a local git repository to work in.\nPlease run from inside a cloned repository:\n  git clone https://github.com/OWNER/REPO.git\n  cd REPO\n  deep-claude -p \"your task\"")
 	}
 
 	// Detect owner/repo if not provided
@@ -88,7 +88,7 @@ func (o *Orchestrator) Run() error {
 		o.ui.Warning("Could not initialize notes file: %v", err)
 	}
 
-	o.ui.Header("Continuous Claude")
+	o.ui.Header("Deep Claude")
 	o.ui.Info("Starting continuous development loop")
 	o.printConfig()
 
@@ -355,6 +355,6 @@ func formatPRBody(commitMsg string, iteration int) string {
 %s
 
 ---
-*This PR was created automatically by Continuous Claude.*
+*This PR was created automatically by Deep Claude.*
 `, iteration, commitMsg)
 }
