@@ -4,9 +4,11 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/guzus/continuous-claude/internal/config"
 	"github.com/guzus/continuous-claude/internal/git"
+	"github.com/guzus/continuous-claude/internal/github"
 	"github.com/guzus/continuous-claude/internal/orchestrator"
 	"github.com/guzus/continuous-claude/internal/ui"
 	"github.com/guzus/continuous-claude/internal/version"
@@ -227,6 +229,15 @@ func runMain(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	printer := ui.NewPrinter(false)
+	createdRepo, err := ensureGitHubRepo(printer, workDir)
+	if err != nil {
+		return err
+	}
+	if err := ensureInitialCommitAndPush(printer, workDir, createdRepo); err != nil {
+		return err
+	}
+
 	// Check for updates (unless disabled)
 	if !cfg.DisableUpdates {
 		checkUpdates(cfg.AutoUpdate)
@@ -239,6 +250,81 @@ func runMain(cmd *cobra.Command, args []string) error {
 	}
 
 	return orch.Run()
+}
+
+func ensureGitHubRepo(printer *ui.Printer, workDir string) (bool, error) {
+	gitClient := git.NewClient(workDir)
+	if gitClient.IsRepo() {
+		return false, nil
+	}
+
+	printer.Warning("No git repository detected in %s", workDir)
+	if !printer.Confirm("Initialize a git repo and create a GitHub repository with gh?") {
+		return false, fmt.Errorf("not in a git repository")
+	}
+
+	repoName := repo
+	if repoName == "" {
+		repoName = filepath.Base(workDir)
+		if !printer.Confirm(fmt.Sprintf("Use repository name %q?", repoName)) {
+			repoName = printer.Prompt("Repository name")
+			if repoName == "" {
+				return false, fmt.Errorf("repository name is required")
+			}
+		}
+	}
+
+	private := !printer.Confirm("Create repository as public?")
+
+	ghClient := github.NewClient("", "", workDir)
+	if err := ghClient.CheckAuth(); err != nil {
+		return false, err
+	}
+	if err := gitClient.InitRepo(); err != nil {
+		return false, err
+	}
+	if err := ghClient.CreateRepo(repoName, private, owner); err != nil {
+		return false, err
+	}
+
+	printer.Success("Created GitHub repository: %s", repoName)
+	return true, nil
+}
+
+func ensureInitialCommitAndPush(printer *ui.Printer, workDir string, skipConfirm bool) error {
+	gitClient := git.NewClient(workDir)
+	if gitClient.HasCommits() {
+		return nil
+	}
+
+	if !skipConfirm {
+		printer.Info("No commits found. Creating a blank CLAUDE.md, committing, and pushing.")
+	}
+
+	claudePath := filepath.Join(workDir, "CLAUDE.md")
+	if _, err := os.Stat(claudePath); err != nil && os.IsNotExist(err) {
+		if err := os.WriteFile(claudePath, []byte(""), 0644); err != nil {
+			return fmt.Errorf("failed to create CLAUDE.md: %w", err)
+		}
+	}
+
+	if err := gitClient.StageAll(); err != nil {
+		return err
+	}
+	if err := gitClient.Commit("Initial commit"); err != nil {
+		return err
+	}
+
+	branch, err := gitClient.CurrentBranch()
+	if err != nil {
+		return err
+	}
+	if err := gitClient.Push(branch); err != nil {
+		return err
+	}
+
+	printer.Success("Pushed initial commit to origin")
+	return nil
 }
 
 func checkUpdates(autoInstall bool) {

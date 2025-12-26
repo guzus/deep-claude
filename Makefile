@@ -21,6 +21,9 @@ LDFLAGS := -ldflags "-s -w \
 # Directories
 BUILD_DIR := build
 CMD_DIR := cmd/continuous-claude
+REMOTE_HOST ?= continuous-claude-vm
+REMOTE_DIR ?= ~
+LINUX_AMD64_BIN := $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64
 
 .PHONY: all build clean install test lint fmt help
 
@@ -40,7 +43,7 @@ build-all: build-linux build-darwin build-windows
 build-linux:
 	@echo "Building for Linux..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(LINUX_AMD64_BIN) ./$(CMD_DIR)
 	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
 
 build-darwin:
@@ -115,6 +118,11 @@ dev:
 	@echo "Building development version..."
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) ./$(CMD_DIR)
 
+# Build Linux amd64 and copy to a remote host via scp.
+scp-linux: build-linux
+	@echo "Copying $(LINUX_AMD64_BIN) to $(REMOTE_HOST)..."
+	scp $(LINUX_AMD64_BIN) $(REMOTE_HOST):$(REMOTE_DIR)/continuous-claude-linux
+
 # Help
 help:
 	@echo "Continuous Claude - Build Commands"
@@ -135,4 +143,5 @@ help:
 	@echo "  run          Run the application (use ARGS= for arguments)"
 	@echo "  checksums    Generate SHA256 checksums for builds"
 	@echo "  dev          Build development version"
+	@echo "  scp-linux    Build Linux amd64 and copy to remote (REMOTE_HOST, REMOTE_DIR)"
 	@echo "  help         Show this help message"
