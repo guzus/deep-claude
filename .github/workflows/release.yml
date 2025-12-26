@@ -1,19 +1,25 @@
-name: Auto Release
+name: Release
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  GO_VERSION: '1.21'
 
 jobs:
   release:
     runs-on: ubuntu-latest
     # Skip if commit is a release commit (to avoid infinite loop)
     if: "!startsWith(github.event.head_commit.message, ':bookmark: Release version')"
+    outputs:
+      should_release: ${{ steps.check_version.outputs.should_release }}
+      new_version: ${{ steps.version_bump.outputs.new_version }}
 
     steps:
       - name: Checkout code
@@ -127,12 +133,12 @@ jobs:
           echo "Updated version to $VERSION_NUM in cmd/continuous-claude/main.go"
           grep "Version" cmd/continuous-claude/main.go
 
-      - name: Generate release notes
-        id: release_notes
+      - name: Update CHANGELOG
         if: steps.check_version.outputs.should_release == 'true'
         run: |
           LATEST_TAG="${{ steps.get_latest_tag.outputs.latest_tag }}"
           NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+          DATE=$(date +%Y-%m-%d)
 
           # Get commits since last tag
           if [ "$LATEST_TAG" = "v0.0.0" ]; then
@@ -141,31 +147,15 @@ jobs:
             COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
 
-          cat > release_notes.md << EOF
-          ## What's Changed
-
-          $COMMITS
-
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LATEST_TAG}...${NEW_VERSION}
-          EOF
-
-          echo "Release notes generated"
-
-      - name: Update CHANGELOG
-        if: steps.check_version.outputs.should_release == 'true'
-        run: |
-          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
-          DATE=$(date +%Y-%m-%d)
-
           # Create new entry
           cat > new_entry.md << EOF
           ## [$NEW_VERSION] - $DATE
 
-          EOF
+          ### What's Changed
 
-          # Append release notes (excluding installation section), convert ## to ###
-          sed '/^## Installation$/,$d' release_notes.md | sed 's/^## /### /' >> new_entry.md
-          echo "" >> new_entry.md
+          $COMMITS
+
+          EOF
 
           # If CHANGELOG.md doesn't exist, create it
           if [ ! -f CHANGELOG.md ]; then
@@ -187,7 +177,7 @@ jobs:
 
           echo "Updated CHANGELOG.md"
 
-      - name: Commit and push release
+      - name: Commit version bump
         if: steps.check_version.outputs.should_release == 'true'
         run: |
           NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
@@ -197,27 +187,187 @@ jobs:
 
           git add cmd/continuous-claude/main.go CHANGELOG.md
           git commit -m ":bookmark: Release version $NEW_VERSION"
-
           git push origin main
 
           echo "Committed and pushed version bump to main"
 
-      - name: Create and push tag
+      - name: Create tag
         if: steps.check_version.outputs.should_release == 'true'
         run: |
           NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
-
           git tag "$NEW_VERSION"
           git push origin "$NEW_VERSION"
-
           echo "Created and pushed tag $NEW_VERSION"
 
-      # Note: The GitHub Release is created by go-release.yml workflow
-      # which triggers on tag push and builds/uploads binaries
+  build:
+    needs: release
+    if: needs.release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
 
-      - name: Release Summary
-        if: steps.check_version.outputs.should_release == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.new_version }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: |
-          echo "Tagged ${{ steps.version_bump.outputs.new_version }}"
-          echo "Bump type: ${{ steps.version_bump.outputs.bump_type }}"
-          echo "The go-release.yml workflow will now build binaries and create the GitHub release."
+          VERSION="${{ needs.release.outputs.new_version }}"
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+
+          BINARY_NAME=continuous-claude
+          if [ "$GOOS" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          OUTPUT_NAME="${BINARY_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "$GOOS" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+
+          go build -ldflags "-s -w \
+            -X main.Version=${VERSION} \
+            -X main.BuildDate=${BUILD_DATE} \
+            -X main.GitCommit=${GIT_COMMIT}" \
+            -o "build/${OUTPUT_NAME}" ./cmd/continuous-claude
+
+          # Create checksum
+          cd build && sha256sum "${OUTPUT_NAME}" > "${OUTPUT_NAME}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuous-claude-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: build/
+
+  publish:
+    needs: [release, build]
+    if: needs.release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.new_version }}
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "continuous-claude-*" -o -name "*.sha256" \) -exec mv {} release/ \;
+          ls -la release/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.release.outputs.new_version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log ${PREV_TAG}..${VERSION} --pretty=format:"- %s (%h)" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+          fi
+
+          cat > release_notes.md << EOF
+          ## What's Changed
+
+          ${COMMITS}
+
+          ## Installation
+
+          ### One-liner install (recommended)
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+          \`\`\`
+
+          ### Install via Go
+          \`\`\`bash
+          go install github.com/${{ github.repository }}/cmd/continuous-claude@${VERSION}
+          \`\`\`
+
+          ### Download pre-built binary
+
+          Download the binary for your platform:
+
+          **Linux (amd64)**
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${VERSION}/continuous-claude-linux-amd64 -o continuous-claude
+          chmod +x continuous-claude
+          sudo mv continuous-claude /usr/local/bin/
+          \`\`\`
+
+          **Linux (arm64)**
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${VERSION}/continuous-claude-linux-arm64 -o continuous-claude
+          chmod +x continuous-claude
+          sudo mv continuous-claude /usr/local/bin/
+          \`\`\`
+
+          **macOS (Apple Silicon)**
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${VERSION}/continuous-claude-darwin-arm64 -o continuous-claude
+          chmod +x continuous-claude
+          sudo mv continuous-claude /usr/local/bin/
+          \`\`\`
+
+          **macOS (Intel)**
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${VERSION}/continuous-claude-darwin-amd64 -o continuous-claude
+          chmod +x continuous-claude
+          sudo mv continuous-claude /usr/local/bin/
+          \`\`\`
+
+          **Windows (amd64)**
+
+          Download \`continuous-claude-windows-amd64.exe\` from the assets below and add it to your PATH.
+
+          ### Verify Checksums
+
+          Each binary has a corresponding \`.sha256\` file. To verify your download:
+          \`\`\`bash
+          # Download the checksum file (adjust filename for your platform)
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${VERSION}/continuous-claude-linux-amd64.sha256 -o continuous-claude.sha256
+
+          # Verify the binary
+          sha256sum -c continuous-claude.sha256
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ needs.release.outputs.new_version }}
+          artifacts: "release/*"
+          bodyFile: release_notes.md
+          allowUpdates: true
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
