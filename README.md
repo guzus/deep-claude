@@ -75,9 +75,31 @@ Using Claude Code to drive iterative development, this script fully automates th
 
 ### Installation
 
-#### Option 1: Download pre-built binary (recommended)
+#### Option 1: Install via Go (recommended)
 
-Download the latest binary for your platform from [Releases](https://github.com/guzus/continuous-claude/releases):
+If you have Go installed, this is the quickest way to get started:
+
+```bash
+go install github.com/guzus/continuous-claude/cmd/continuous-claude@latest
+```
+
+The binary will be installed to your `$GOPATH/bin` directory. Make sure it's in your PATH.
+
+#### Option 2: Build from source
+
+```bash
+# Clone the repository
+git clone https://github.com/guzus/continuous-claude.git
+cd continuous-claude
+
+# Build and install
+make build
+sudo mv build/continuous-claude /usr/local/bin/
+```
+
+#### Option 3: Download pre-built binary
+
+Pre-built binaries are available on the [Releases](https://github.com/guzus/continuous-claude/releases) page when attached to a release.
 
 **Linux (amd64)**
 ```bash
@@ -123,30 +145,7 @@ curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/c
 sha256sum -c continuous-claude.sha256
 ```
 
-#### Option 2: Build from source
-
-```bash
-# Clone the repository
-git clone https://github.com/guzus/continuous-claude.git
-cd continuous-claude
-
-# Build
-make build
-
-# Install to GOBIN
-make install
-
-# Or manually move the binary
-sudo mv build/continuous-claude /usr/local/bin/
-```
-
-#### Option 3: Install via Go
-
-```bash
-go install github.com/guzus/continuous-claude/cmd/continuous-claude@latest
-```
-
-To uninstall:
+#### Uninstall
 
 ```bash
 rm /usr/local/bin/continuous-claude
