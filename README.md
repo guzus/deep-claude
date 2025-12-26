@@ -79,21 +79,48 @@ Using Claude Code to drive iterative development, this script fully automates th
 
 Download the latest binary for your platform from [Releases](https://github.com/guzus/continuous-claude/releases):
 
+**Linux (amd64)**
 ```bash
-# Linux (amd64)
 curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-amd64 -o continuous-claude
 chmod +x continuous-claude
 sudo mv continuous-claude /usr/local/bin/
+```
 
-# macOS (Apple Silicon)
+**Linux (arm64)**
+```bash
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-arm64 -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
+**macOS (Apple Silicon)**
+```bash
 curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-darwin-arm64 -o continuous-claude
 chmod +x continuous-claude
 sudo mv continuous-claude /usr/local/bin/
+```
 
-# macOS (Intel)
+**macOS (Intel)**
+```bash
 curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-darwin-amd64 -o continuous-claude
 chmod +x continuous-claude
 sudo mv continuous-claude /usr/local/bin/
+```
+
+**Windows (amd64)**
+
+Download `continuous-claude-windows-amd64.exe` from the [Releases](https://github.com/guzus/continuous-claude/releases/latest) page and add it to your PATH.
+
+#### Verify checksums (optional)
+
+Each release includes `.sha256` checksum files. To verify your download:
+
+```bash
+# Download the checksum file
+curl -fsSL https://github.com/guzus/continuous-claude/releases/latest/download/continuous-claude-linux-amd64.sha256 -o continuous-claude.sha256
+
+# Verify (adjust filename for your platform)
+sha256sum -c continuous-claude.sha256
 ```
 
 #### Option 2: Build from source
