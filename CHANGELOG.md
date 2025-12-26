@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v0.1.1] - 2025-12-26
+
+### What's Changed
+
+- Add CLAUDE.md for feature testing instructions and enhance Makefile for remote deployment & Automatically create commits if there isn't (4936ddf)
+
 ## [v0.1.0] - 2025-12-26
 
 ### What's Changed
