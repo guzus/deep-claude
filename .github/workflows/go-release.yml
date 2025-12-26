@@ -7,8 +7,6 @@ on:
   pull_request:
     branches:
       - main
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -111,7 +109,7 @@ jobs:
           path: build/
 
   release:
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -134,11 +132,7 @@ jobs:
       - name: Generate release notes
         id: release_notes
         run: |
-          if [[ -n "${{ github.event.release.tag_name }}" ]]; then
-            VERSION="${{ github.event.release.tag_name }}"
-          else
-            VERSION=${GITHUB_REF#refs/tags/}
-          fi
+          VERSION=${GITHUB_REF#refs/tags/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           PREV_TAG=$(git describe --tags --abbrev=0 ${VERSION}^ 2>/dev/null || echo "")
 
