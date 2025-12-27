@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/guzus/continuous-claude/internal/config"
 	"github.com/guzus/continuous-claude/internal/git"
 	"github.com/guzus/continuous-claude/internal/github"
 	"github.com/guzus/continuous-claude/internal/orchestrator"
+	"github.com/guzus/continuous-claude/internal/tmux"
 	"github.com/guzus/continuous-claude/internal/ui"
 	"github.com/guzus/continuous-claude/internal/version"
 	"github.com/spf13/cobra"
@@ -70,6 +72,7 @@ var (
 	cleanupWorktree     bool
 	autoUpdate          bool
 	disableUpdates      bool
+	detach              bool
 )
 
 func init() {
@@ -103,10 +106,17 @@ func init() {
 	rootCmd.Flags().BoolVar(&autoUpdate, "auto-update", false, "Automatically install updates")
 	rootCmd.Flags().BoolVar(&disableUpdates, "disable-updates", false, "Skip update checks")
 
+	// Detach mode
+	rootCmd.Flags().BoolVarP(&detach, "detach", "d", false, "Run in background tmux session")
+
 	// Add subcommands
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(listWorktreesCmd)
+	rootCmd.AddCommand(sessionsCmd)
+	rootCmd.AddCommand(attachCmd)
+	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(killCmd)
 }
 
 var versionCmd = &cobra.Command{
@@ -188,6 +198,160 @@ var listWorktreesCmd = &cobra.Command{
 	},
 }
 
+var sessionsCmd = &cobra.Command{
+	Use:   "sessions",
+	Short: "List and select active continuous-claude tmux sessions",
+	Long: `List active continuous-claude tmux sessions with interactive selection.
+
+Use arrow keys or j/k to navigate, Enter to attach, q to cancel.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !tmux.IsAvailable() {
+			return fmt.Errorf("tmux is not installed")
+		}
+
+		sessions, err := tmux.ListSessions()
+		if err != nil {
+			return err
+		}
+
+		if len(sessions) == 0 {
+			fmt.Println("No active sessions")
+			return nil
+		}
+
+		// Interactive picker
+		fmt.Println("Select a session to attach:")
+		selected, err := tmux.PickSession(sessions)
+		if err != nil {
+			return err
+		}
+
+		if selected == "" {
+			fmt.Println("Cancelled")
+			return nil
+		}
+
+		return tmux.AttachSession(selected)
+	},
+}
+
+var attachCmd = &cobra.Command{
+	Use:   "attach [session-name]",
+	Short: "Attach to a tmux session",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sessionName := args[0]
+
+		// Allow partial match - find session starting with the given name
+		sessions, err := tmux.ListSessions()
+		if err != nil {
+			return err
+		}
+
+		var match string
+		for _, s := range sessions {
+			if s.Name == sessionName || strings.HasPrefix(s.Name, sessionName) {
+				if match != "" {
+					return fmt.Errorf("ambiguous session name '%s' - matches multiple sessions", sessionName)
+				}
+				match = s.Name
+			}
+		}
+
+		if match == "" {
+			fmt.Println("Session not found. Available sessions:")
+			for _, s := range sessions {
+				fmt.Printf("  %s\n", s.Name)
+			}
+			return fmt.Errorf("session '%s' not found", sessionName)
+		}
+
+		return tmux.AttachSession(match)
+	},
+}
+
+var logsCmd = &cobra.Command{
+	Use:   "logs [session-name]",
+	Short: "View logs from a tmux session (read-only)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sessionName := args[0]
+
+		// Allow partial match
+		sessions, err := tmux.ListSessions()
+		if err != nil {
+			return err
+		}
+
+		var match string
+		for _, s := range sessions {
+			if s.Name == sessionName || strings.HasPrefix(s.Name, sessionName) {
+				if match != "" {
+					return fmt.Errorf("ambiguous session name '%s' - matches multiple sessions", sessionName)
+				}
+				match = s.Name
+			}
+		}
+
+		if match == "" {
+			fmt.Println("Session not found. Available sessions:")
+			for _, s := range sessions {
+				fmt.Printf("  %s\n", s.Name)
+			}
+			return fmt.Errorf("session '%s' not found", sessionName)
+		}
+
+		// Get last 1000 lines of logs
+		logs, err := tmux.GetSessionLogs(match, 1000)
+		if err != nil {
+			return err
+		}
+
+		fmt.Print(logs)
+		return nil
+	},
+}
+
+var killCmd = &cobra.Command{
+	Use:   "kill [session-name]",
+	Short: "Kill a tmux session",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		sessionName := args[0]
+
+		// Allow partial match
+		sessions, err := tmux.ListSessions()
+		if err != nil {
+			return err
+		}
+
+		var match string
+		for _, s := range sessions {
+			if s.Name == sessionName || strings.HasPrefix(s.Name, sessionName) {
+				if match != "" {
+					return fmt.Errorf("ambiguous session name '%s' - matches multiple sessions", sessionName)
+				}
+				match = s.Name
+			}
+		}
+
+		if match == "" {
+			fmt.Println("Session not found. Available sessions:")
+			for _, s := range sessions {
+				fmt.Printf("  %s\n", s.Name)
+			}
+			return fmt.Errorf("session '%s' not found", sessionName)
+		}
+
+		if err := tmux.KillSession(match); err != nil {
+			return err
+		}
+
+		fmt.Printf("Killed session: %s\n", match)
+		return nil
+	},
+}
+
 func runMain(cmd *cobra.Command, args []string) error {
 	// Get working directory
 	workDir, err := os.Getwd()
@@ -227,6 +391,11 @@ func runMain(cmd *cobra.Command, args []string) error {
 	// Validate config
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+
+	// Handle detach mode - spawn tmux session and exit
+	if detach {
+		return runDetached(workDir, cfg)
 	}
 
 	printer := ui.NewPrinter(false)
@@ -358,4 +527,115 @@ func checkUpdates(autoInstall bool) {
 	} else {
 		printer.Info("New version available: %s (run 'continuous-claude update' to install)", latestVersion)
 	}
+}
+
+// runDetached spawns a tmux session running continuous-claude and returns immediately.
+func runDetached(workDir string, cfg *config.Config) error {
+	printer := ui.NewPrinter(false)
+
+	// Check tmux availability
+	if !tmux.IsAvailable() {
+		return fmt.Errorf("tmux is required for -d flag. Install with: brew install tmux (macOS) or apt install tmux (Linux)")
+	}
+
+	// Generate session name
+	sessionName := tmux.GenerateSessionName(cfg.Prompt)
+
+	// Build command arguments (same as current, but without -d)
+	cmdArgs := buildCommandArgs(cfg)
+
+	// Get the executable path
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Build full command
+	fullCmd := append([]string{executable}, cmdArgs...)
+
+	// Create tmux session
+	if err := tmux.CreateSession(sessionName, fullCmd, workDir); err != nil {
+		return fmt.Errorf("failed to create tmux session: %w", err)
+	}
+
+	printer.Success("Started session: %s", sessionName)
+	printer.Info("View logs:   continuous-claude logs %s", sessionName)
+	printer.Info("Attach:      continuous-claude attach %s", sessionName)
+	printer.Info("Kill:        continuous-claude kill %s", sessionName)
+
+	return nil
+}
+
+// buildCommandArgs builds the command line arguments from config (excluding -d flag).
+func buildCommandArgs(cfg *config.Config) []string {
+	var args []string
+
+	// Required
+	args = append(args, "-p", cfg.Prompt)
+
+	// Limits
+	if cfg.MaxRuns > 0 {
+		args = append(args, "-m", fmt.Sprintf("%d", cfg.MaxRuns))
+	}
+	if cfg.MaxCost > 0 {
+		args = append(args, "--max-cost", fmt.Sprintf("%.2f", cfg.MaxCost))
+	}
+	if cfg.MaxDuration > 0 {
+		args = append(args, "--max-duration", config.FormatDuration(cfg.MaxDuration))
+	}
+
+	// GitHub/Git options
+	if cfg.Owner != "" {
+		args = append(args, "--owner", cfg.Owner)
+	}
+	if cfg.Repo != "" {
+		args = append(args, "--repo", cfg.Repo)
+	}
+	if cfg.MergeStrategy != "squash" {
+		args = append(args, "--merge-strategy", cfg.MergeStrategy)
+	}
+	if cfg.GitBranchPrefix != "continuous-claude/" {
+		args = append(args, "--git-branch-prefix", cfg.GitBranchPrefix)
+	}
+	if cfg.NotesFile != "SHARED_TASK_NOTES.md" {
+		args = append(args, "--notes-file", cfg.NotesFile)
+	}
+
+	// Execution options
+	if cfg.DisableCommits {
+		args = append(args, "--disable-commits")
+	}
+	if cfg.DryRun {
+		args = append(args, "--dry-run")
+	}
+	if cfg.CompletionSignal != "CONTINUOUS_CLAUDE_PROJECT_COMPLETE" {
+		args = append(args, "--completion-signal", cfg.CompletionSignal)
+	}
+	if cfg.CompletionThreshold != 3 {
+		args = append(args, "--completion-threshold", fmt.Sprintf("%d", cfg.CompletionThreshold))
+	}
+
+	// Worktree options
+	if cfg.Worktree != "" {
+		args = append(args, "--worktree", cfg.Worktree)
+	}
+	if cfg.WorktreeBaseDir != "../continuous-claude-worktrees" {
+		args = append(args, "--worktree-base-dir", cfg.WorktreeBaseDir)
+	}
+	if cfg.CleanupWorktree {
+		args = append(args, "--cleanup-worktree")
+	}
+
+	// Update options
+	if cfg.AutoUpdate {
+		args = append(args, "--auto-update")
+	}
+	if cfg.DisableUpdates {
+		args = append(args, "--disable-updates")
+	}
+
+	// Extra Claude args
+	args = append(args, cfg.ExtraClaudeArgs...)
+
+	return args
 }

@@ -35,6 +35,9 @@ type Config struct {
 	AutoUpdate     bool
 	DisableUpdates bool
 
+	// Detach mode
+	Detach bool
+
 	// Extra args to pass to Claude
 	ExtraClaudeArgs []string
 }
